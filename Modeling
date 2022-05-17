@@ -1,0 +1,143 @@
+###IMPORTANDO AS TABELAS
+
+stat1<-read_xlsx("/TCC.xlsx",sheet = "Stat1")
+stat2<-read_xlsx("/TCC.xlsx",sheet = "Stat2")
+stat3<-read_xlsx("/TCC.xlsx",sheet = "Stat3")
+#Alinhamento por jogador Ã© identico em cada tabela. Juntar todos os features.
+stats<-cbind(stat1,stat2[,-(1:8)],stat3[,-(1:8)])
+
+#Entendendo as variÃ¡veis das colunas
+summary(stats)
+names(stats)
+#VariÃ¡veis com NA podem ser considaderadas como 0; Variavel Dist pode ser deletada
+j=1
+for (j in 6:ncol(stats)){
+  stats[,j]<-replace_na(stats[,j],0)
+}
+stats<-stats[,-42]
+str(stats)
+##Ajustando o nome do jogador
+stats$Player<-beg2char(stats$Player,"\\")
+stats$Player_Team<-paste(stats$Player,"|",stats$Squad,"|",stats$Rk)
+##
+rownames(stats)<-stats$Player_Team
+
+#######Criando modelo por posiÃ§Ã£o do jogador
+
+###Zagueiros
+df<- c("CrdY","CrdR","2CrdY","Fls","Int","TklW","Age","MP")
+modelo.df<-stats%>%
+  dplyr::filter(Pos=="DF" | Pos=="DFMF" | Pos=="MFDF")%>%
+  dplyr::select(-Player,-Player_Team,-Rk,-Nation,-Pos,-Squad)%>%
+  dplyr::select(all_of(df))%>%
+  dplyr::filter(MP>=12)
+modelo.df.relativo<-modelo.df
+j=0
+for (j in 1:(ncol(modelo.df.relativo)-2)){
+  modelo.df.relativo[,j]<-modelo.df.relativo[,j]/modelo.df.relativo[,ncol(modelo.df.relativo)]
+}
+
+#normalizando
+stats.modelo.df<-modelo.df[,-(ncol(modelo.df.relativo))]
+stats.modelo.df<-scale(stats.modelo.df)
+
+#Kmeans - 5, 6 e 7 nucleos
+df.k5<-kmeans(stats.modelo.df,centers=5)
+df.k6<-kmeans(stats.modelo.df,centers=6)
+df.k7<-kmeans(stats.modelo.df,centers=7)
+df.k10<-kmeans(stats.modelo.df,centers=10)
+
+#Elbow
+fviz_nbclust(stats.modelo.df, FUN = hcut, method = "wss")
+
+
+
+g1<-fviz_cluster(df.k5,geom = "point",data = stats.modelo.df)+ggtitle("K=5")
+g2<-fviz_cluster(df.k6,geom = "point",data = stats.modelo.df)+ggtitle("K=6")
+g3<-fviz_cluster(df.k7,geom = "point",data = stats.modelo.df)+ggtitle("K=7")
+g4<-fviz_cluster(df.k10,geom = "point",data = stats.modelo.df)+ggtitle("K=10")
+g3
+modelo.df$cluster<-(df.k7$cluster)
+modelo.df.relativo$cluster<-(df.k7$cluster)
+stats.modelo.df$cluster7<-df.k7$cluster
+
+#quero escolher jogadores disciplinados (baixo Ã­ndice de cartÃµes) e roubadores de bola
+
+modelo.df.relativo%>%
+  dplyr::group_by(cluster)%>%
+  dplyr::summarise(across(everything(),list(m=mean)),n())
+  
+  
+modelo.df.relativo%>%
+  dplyr::group_by(cluster)%>%
+  dplyr::summarise(across(everything(),list(m=mean)))%>%
+  dplyr::filter(CrdY_m<(1/5))%>%
+  dplyr::filter(TklW_m>0.99)
+
+modelo.df.relativo%>%
+  dplyr::group_by(cluster)%>%
+  dplyr::summarise(across(everything(),list(m=mean)))%>%
+  dplyr::filter(cluster==5|cluster==7)
+
+lista<-modelo.df%>%
+  dplyr::filter(cluster==5)%>%
+  dplyr::select(name,Age)
+
+
+###Meio Campo
+MF<-c("Fld","Crs","TklW","Ast...13","G+A","CrdY","Age","MP")
+modelo.mf<-stats%>%
+  dplyr::filter(Pos=="MF" | Pos=="MFDF"| Pos=="DFMF" | Pos=="MFFW" | Pos=="FWMF" )%>%
+  dplyr::select(-Player,-Player_Team,-Rk,-Nation,-Pos,-Squad)%>%
+  dplyr::select(all_of(MF))%>%
+  dplyr::filter(MP>=12)
+
+modelo.mf.relativo<-modelo.mf
+j=0
+for (j in 1:(ncol(modelo.mf.relativo)-2)){
+  modelo.mf.relativo[,j]<-modelo.mf.relativo[,j]/modelo.mf.relativo[,ncol(modelo.mf.relativo)]
+}
+
+#normalizando
+stats.modelo.mf<-modelo.mf[,-(ncol(modelo.mf.relativo))]
+stats.modelo.mf<-scale(stats.modelo.mf)
+
+#Kmeans - 5, 6 e 7 nucleos
+mf.k5<-kmeans(stats.modelo.mf,centers=5)
+mf.k6<-kmeans(stats.modelo.mf,centers=6)
+mf.k7<-kmeans(stats.modelo.mf,centers=7)
+mf.k3<-kmeans(stats.modelo.mf,centers=3)
+
+#Elbow
+fviz_nbclust(stats.modelo.mf, FUN = hcut, method = "wss")
+
+g1.mf<-fviz_cluster(mf.k5,geom = "point",data = stats.modelo.mf)+ggtitle("K=5")
+g2.mf<-fviz_cluster(mf.k6,geom = "point",data = stats.modelo.mf)+ggtitle("K=6")
+g3.mf<-fviz_cluster(mf.k7,geom = "point",data = stats.modelo.mf)+ggtitle("K=7")
+g4.mf<-fviz_cluster(mf.k3,geom = "point",data = stats.modelo.mf)+ggtitle("K=3")
+g4.mf
+
+
+modelo.mf$cluster<-(mf.k3$cluster)
+modelo.mf.relativo$cluster<-(mf.k3$cluster)
+
+modelo.mf.relativo%>%
+  dplyr::group_by(cluster)%>%
+  dplyr::summarise(across(everything(),list(m=mean)),n())
+
+#Quero um jogador mais experiente e que dÃª muitas assistÃªncias e cruzamentos
+escolha<-modelo.mf.relativo%>%
+  dplyr::group_by(cluster)%>%
+  dplyr::summarise(across(everything(),list(m=mean)),n())%>%
+  dplyr::filter(Age_m>26 & Ast...13_m>0.1 & Crs_m >2)%>%
+  dplyr::select(cluster)
+
+modelo.mf.2<-modelo.mf.relativo%>%
+  dplyr::filter(cluster==escolha$cluster)
+
+stats.modelo.mf.2<-modelo.mf.2[,-(8:9)]
+stats.modelo.mf.2<-scale(stats.modelo.mf.2)
+
+mf.2.k5<-kmeans(stats.modelo.mf.2,centers=5)
+g5.mf<-fviz_cluster(mf.2.k5,geom = "point",data = stats.modelo.mf.2)+ggtitle("K=5")
+g5.mf
